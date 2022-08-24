@@ -1,0 +1,75 @@
+---
+title: "TimeSeriesPigmentation - Data from Orchard 2021"
+output: Troubleshoot 
+---
+
+
+
+Step 1. Reading a data file into R. 
+The library(tidyverse) functions load and activate the packages tidyverse and ggpubr in R. 
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+
+Step 2. Assign a name to the data file, read and organize the data.
+The purpose in this step is to organize the dataframe in a way so as to be able to:
+(1) Plot lines for each of the E and P cages - mean_Pigmentation score (y axis) over Timepoint (x axis) with stdev at each timepoint
+(2) Plot group group means data for the E and P cages - mean_Pigmentation score (y axis) over Timepoint (x axis) with stdev at each timepoint
+```{r}
+Troubleshoot <- read.csv("full_pigmentation.csv")
+Troubleshoot
+
+Troubleshoot_Organize_by_Cage <-Troubleshoot  %>%
+  filter(complete.cases(.)) %>% # use complete.cases to filter for only the rows with no missing values
+  filter(Treatment == "E"|Treatment == "P") %>% 
+  mutate(TP = replace(TP, TP == 2, "07-20-2021")) %>% 
+  mutate(TP = replace(TP, TP == 3, "07-26-2021")) %>% 
+  mutate(TP = replace(TP, TP == 7, "08-25-2021")) %>% 
+  mutate(TP = replace(TP, TP == 8, "09-01-2021")) %>% 
+  mutate(TP = replace(TP, TP == 9, "09-07-2021")) %>% 
+  mutate(TP = replace(TP, TP == 13, "12-22-2021")) %>%
+  filter(TP == "07-26-2021" | TP == "08-25-2021" | TP == "09-07-2021" | TP == "12-22-2021") %>% 
+  mutate(Pigmentation_Score = T5 + T6 +T7) %>% #create a new variable with a pigmentation score for each cage - This is the sum of the tergite T5,T6, and T7
+  select(TP,Treatment, Treatment_Cage, Pigmentation_Score) %>%   #select the variable we will use for plotting
+  group_by(TP,Treatment, Treatment_Cage) %>% # group variables first by Treatment and then Cage
+  summarise(mean_Pigmentation_Score = mean(Pigmentation_Score), standard_error = sd(Pigmentation_Score)/sqrt(10))  # mean pigmentation score of the 3 replicates per cage
+
+Troubleshoot_Organize_by_Cage
+
+
+Troubleshoot_Organize_by_Cage_Type <-Troubleshoot  %>%
+  filter(complete.cases(.)) %>% # use complete.cases to filter for only the rows with no missing values
+  filter(Treatment == "E"|Treatment == "P") %>% 
+  mutate(TP = replace(TP, TP == 2, "07-20-2021")) %>% 
+  mutate(TP = replace(TP, TP == 3, "07-26-2021")) %>% 
+  mutate(TP = replace(TP, TP == 7, "08-25-2021")) %>% 
+  mutate(TP = replace(TP, TP == 8, "09-01-2021")) %>% 
+  mutate(TP = replace(TP, TP == 9, "09-07-2021")) %>% 
+  mutate(TP = replace(TP, TP == 13, "12-22-2021")) %>% 
+  filter(TP == "07-26-2021" | TP == "08-25-2021" | TP == "09-07-2021" | TP == "12-22-2021") %>% 
+  mutate(Pigmentation_Score = T5 + T6 +T7) %>% #create a new variable with a pigmentation score for each cage - This is the sum of the tergite T5,T6, and T7
+  select(TP,Treatment, Treatment_Cage, Pigmentation_Score) %>%   #select the variable we will use for plotting
+  group_by(TP,Treatment) %>% # group variables first by Treatment and then Cage
+  summarise(mean_Pigmentation_Score = mean(Pigmentation_Score), standard_error = sd(Pigmentation_Score)/sqrt(10))  # mean pigmentation score of the 3 replicates per cage
+
+Troubleshoot_Organize_by_Cage_Type
+```
+
+Step 3. We will use ggplot to obtain visuals for means of pigmentation score for each Cage across timepoints & for group means of the E and P cages across timepoints
+```{r}
+Troubleshoot_plot <- ggplot(data = Troubleshoot_Organize_by_Cage,
+  aes(x = TP, y = mean_Pigmentation_Score,group = Treatment , color= Treatment)) + 
+  geom_line(aes(group=Treatment_Cage), alpha = 0.2)+  #this plots individual cages
+  geom_point(aes(group=Treatment_Cage), size= 0.2, alpha = 0.2) +
+  geom_line(data = Troubleshoot_Organize_by_Cage_Type)+ #this plots means for cages
+  geom_errorbar(data = Troubleshoot_Organize_by_Cage_Type, aes(ymin=mean_Pigmentation_Score-standard_error, ymax=mean_Pigmentation_Score+standard_error), width=.2) +
+  scale_color_manual(values=c("black", "orange")) +
+  scale_y_continuous(breaks=seq(0, 30, 1)) +
+  labs(y = "Pigmentation Score") + 
+  theme_classic()
+
+Troubleshoot_plot
+```
+
