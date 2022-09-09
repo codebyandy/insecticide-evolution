@@ -1,154 +1,172 @@
 
 ```{r}
 library(tidyverse)
+library(lme4) # for modeling
 ```
 
 
 ### [1] DATA WRANGLING ###
 
-Snippet reads and combines all .csv files in ./data/ subdirectory
+Combine all .csv files for each into 1 data frame 
 ```{r}
+# INPUT DATA: 7 .csv file, each for an image folder (columns: image, count)
+data_dir = "./data/" # Combines all .csv files in specified folder
+
 read_plus <- function(flnm) {
     read_csv(flnm) %>% 
         mutate(filename = flnm)
 }
 
 raw_data <-
-    list.files(path = "./data/",
+    list.files(path = data_dir,
                pattern = "*.csv", 
                full.names = T) %>% 
     map_df(~read_plus(.))
 ```
 
-Clean into data frame with columns: date, treatment, cage, replicate, count
+Reorganize data frame for relevant info 
+OUTPUT DATA: (columns: date, treatment, cage, replicate, id, count)
 ```{r}
-# data currently has columns: image (includes cage), count, ..., filename (includes date)
+# INPUT DATA: (columns: image [includes cage], count, filename [includes date])
 census <- raw_data %>% 
   mutate(
     date = substr(filename, 15, 19),
     treatment = substr(image, 1, 1),
-    cage = as.integer(case_when(
-      nchar(image) == 4 ~ substr(image, 2, 2),
-      nchar(image) == 5 ~ substr(image, 2, 3)
+    cage = as.integer(case_when( 
+      nchar(image) == 4 ~ substr(image, 2, 2), # EX: "E1-A" -> "E1"
+      nchar(image) == 5 ~ substr(image, 2, 3)  # EX: "E10-A" -> "E10"
     )),
     replicate  = case_when(
-      nchar(image) == 4 ~ substr(image, 4, 4),
-      nchar(image) == 5 ~ substr(image, 5, 5)
+      nchar(image) == 4 ~ substr(image, 4, 4), # EX: "E1-A" -> "A"
+      nchar(image) == 5 ~ substr(image, 5, 5)  # EX: "E10-A" -> "A"
     ),
   ) %>% 
   select(date, treatment, cage, replicate, count) %>% 
   arrange(date, treatment, cage, replicate) %>% 
   mutate(
-    id = paste(treatment, cage, sep="-"),
-    count = count * 40
-    )
+    count = count * 40 # Because region of interest is 2.5% of the cage
+  )
+
+write.csv(census, "census.csv")
 ```
 
-Summarise into data frame with columns: date, treatment, cage, count (average replicates * 40)
+Mean replicate counts for cage census
+OUTPUT DATA: (columns: date, treatment, cage, id, census)
 ```{r}
 census_by_cage <- census %>% 
   group_by(date, treatment, cage) %>% 
-  summarise(population = mean(count)) %>% 
+  summarise(census = mean(count)) %>% # Mean 4 cage replicates
   mutate(
-    id = paste(treatment, cage, sep="-"),
-    treatment = case_when(
+    id = paste(treatment, cage, sep="-"), # id: Unique treatment/cage identifier
+    treatment = case_when( # Rename treatments
       treatment == "E" ~ "Control",
       treatment == "P" ~ "Experimental"
     )
   )
+
+write.csv(census_by_cage, "census_by_cage.csv")
 ```
 
-Summarise into data frame with columns: date, treatment, count (average replicates)
+Mean replicate counts for treatment census
+OUTPUT DATA: (columns: date, treatment, cage, id, census)
 ```{r}
 census_by_treatment <- census %>% 
   group_by(date, treatment) %>% 
   summarise(
-    population = mean(count),
-    se_population = sd(count) / sqrt(4)
+    census = mean(count), # Mean all treatment counts
+    se_census = sd(count) / sqrt(4)
   ) %>% 
   mutate(
-    treatment = case_when(
+    treatment = case_when( # Rename treatments
       treatment == "E" ~ "Control",
       treatment == "P" ~ "Experimental"
     )
   )
-```
 
+write.csv(census_by_treatment, "census_by_treatment.csv")
+```
 
 
 ### [2] DATA VISUALIZATION ###
 
+Plot census over time for each cage and for each treatment
 ```{r}
-plotCensus <- ggplot(
+ggplot(
   data=census_by_cage,
-  aes(x=date, y=population, group=treatment, color=treatment)
+  aes(x=date, y=census, group=treatment, color=treatment)
 ) + 
-geom_line(aes(group=id), alpha=0.2) +
-geom_point(aes(color=treatment), size= 0.2, alpha = 0.2) + 
-geom_line(data=census_by_treatment, aes(x=date, y=population), size=1) +
-geom_point(data=census_by_treatment, aes(x=date, y=population)) + 
-geom_errorbar(data=census_by_treatment,
-              aes(x=date, y=population, ymin=population-se_population, ymax=population+se_population),
-              width=.2, position=position_dodge(0.05))+
-scale_color_manual(values=c("black","orange"))+
+geom_line(aes(group=id), alpha=0.2) + # Cage lines
+geom_point(aes(color=treatment), size= 0.2, alpha = 0.2) + # Cage lines
+geom_line(data=census_by_treatment, aes(x=date, y=census), size=1) + # Mean lines
+geom_point(data=census_by_treatment, aes(x=date, y=census)) + # Mean lines
+geom_errorbar(data=census_by_treatment, # Mean lines
+              aes(x=date, y=census, ymin=census-se_census, ymax=census+se_census),
+              width=.2, position=position_dodge(0.05)) +
+scale_color_manual(values=c("black","orange")) +
 scale_x_discrete(
   labels = c("Jul 19",  "Aug 5", "Aug 20", "Sep 17"),
 ) +
-#ylim(0, 10) +
 labs(y = "Adult Census Estimate",  x="", colour="Treatment") +
-theme_classic() +
-theme(
-  axis.title.x = element_text(size = 0),
-  axis.title.y = element_text(size = 30),
-  axis.text.x = element_text(size = 30),
-  axis.text.y = element_text(size = 30),
-  legend.title = element_text(size = 30),
-  legend.text = element_text(size = 25)
-  )  
-```
+theme_classic() # +
 
+# Un-comment below to customize plot
+# theme(
+#   axis.title.x = element_text(size = 0),
+#   axis.title.y = element_text(size = 30),
+#   axis.text.x = element_text(size = 30),
+#   axis.text.y = element_text(size = 30),
+#   legend.title = element_text(size = 30),
+#   legend.text = element_text(size = 25)
+#   )
+
+ggsave("census_plot.png")
+
+# Un-comment below to customize plot
+# ggsave("census_plot.png", width = 20, height = 20, units = "cm")
+```
 
 
 ### [3] STATISTICS ###
 
+Normality test
 ```{r}
-library(lme4)
-library(pixiedust)
-library(kableExtra)
-```
-
-```{r}
-shapiro.test(census_by_cage$population)
+shapiro.test(census_by_cage$census)
 
 boxplot(census$count)
-boxplot(census_by_cage$population)
+boxplot(census_by_cage$census)
 ```
 
+Create new data frame from census with log(census) because data is NOT normal
 ```{r}
 census_log <- census %>%
   mutate(
-    log.population = case_when(
+    log.census = case_when(
       count == 0 ~ 0,
-      TRUE ~ log(count * 40)
-    )
+      TRUE ~ log(count * 40),
+    ),
+    id = paste(treatment, cage, sep="-")
   )
 ```
 
+Analyzing time using linear mixed effect model (for each time frame)
 ```{r}
 stats_time_census <- data.frame(treatment=character(), time_gap=integer(), p=double())
 
-for (t in unique(census_log$treatment)) {
+for (group in unique(census_log$treatment)) {
   for (time_frame in list(c("07-19", "08-05"), c("08-05", "08-20"), c("08-20", "09-17"))) {
-    data_sub <- census_log %>% filter(date %in% time_frame, treatment == t)
-    full.model = lmer(log.population ~ date + (1|id), data=data_sub, REML=FALSE)
-    noTP.model = lmer(log.population ~ (1|id), data=data_sub, REML=FALSE)
+    data_sub <- census_log %>% filter(date %in% time_frame, treatment == group)
+    
+    full.model = lmer(log.census ~ date + (1|id), data=data_sub, REML=FALSE)
+    noTP.model = lmer(log.census ~ (1|id), data=data_sub, REML=FALSE)
     p = anova(full.model, noTP.model)[2,8]
+    
     time_gap = paste(time_frame[1], time_frame[2], sep=" to ")
-    stats_time_census <- rbind(stats_time_census, data.frame(treatment=c(t), time_gap=c(time_gap), p=c(p)))
+    stats_time_census <- rbind(stats_time_census, data.frame(treatment=c(group), time_gap=c(time_gap), p=c(p)))
   }
 }
 
-stats_time_census2 <- stats_time_census %>%
+# Make easier to interpret
+stats_time_census_simple <- stats_time_census %>%
   mutate(
     p = case_when(
       p < 0.001 ~ "<0.001",
@@ -159,20 +177,26 @@ stats_time_census2 <- stats_time_census %>%
       TRUE ~ ""
     )
   )
+
+stats_time_census_simple
 ```
 
+Analyzing treatment using linear mixed effect model (at each date)
 ```{r}
 stats_treatment_census <- data.frame(date=character(), p=double())
 
-for (d in c("07-19", "08-05", "08-20", "09-17")) {
-  data_sub <- census_log %>% filter(date == d)
-  full.model = lmer(log.population ~ treatment + (1|id), data=data_sub, REML=FALSE)
-  noTreatment.model = lmer(log.population ~ (1|id), data=data_sub, REML=FALSE)
+for (day in c("07-19", "08-05", "08-20", "09-17")) {
+  data_sub <- census_log %>% filter(date == day)
+  
+  full.model = lmer(log.census ~ treatment + (1|id), data=data_sub, REML=FALSE)
+  noTreatment.model = lmer(log.census ~ (1|id), data=data_sub, REML=FALSE)
   p = anova(full.model, noTreatment.model)[2,8]
-  stats_treatment_census <- rbind(stats_treatment_census, data.frame(TP=c(d), p=c(p)))
+  
+  stats_treatment_census <- rbind(stats_treatment_census, data.frame(date=c(day), p=c(p)))
 }
 
-stats_treatment_census2 <- stats_treatment_census %>%
+# Make easier to interpret
+stats_treatment_census_simple <- stats_treatment_census %>%
   mutate(
     p = case_when(
       p < 0.001 ~ "<0.001",
@@ -184,82 +208,5 @@ stats_treatment_census2 <- stats_treatment_census %>%
     )
   )
 
+stats_treatment_census_simple
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Analyzing time using linear mixed effect model
-```{r}
-census_by_cage_log <- census_by_cage %>%  mutate(log.population = log(population))
-
-stats_time_census <- data.frame(treatment=character(), time_gap=integer(), p=double())
-
-for (t in unique(census_by_cage_log$treatment)) {
-  for (time_frame in list(c("07-19", "08-05"), c("08-05", "08-20"), c("08-20", "09-17"))) {
-    data_sub <- census_by_cage_log %>% filter(date %in% time_frame, treatment == t)
-    full.model = lmer(log.population ~ date + (1|id), data=data_sub, REML=FALSE)
-    noTP.model = lmer(log.population ~ (1|id), data=data_sub, REML=FALSE)
-    p = anova(full.model, noTP.model)[2,8]
-    time_gap = paste(time_frame[1], time_frame[2], sep=" to ")
-    stats_time_census <- rbind(stats_time_census, data.frame(treatment=c(t), time_gap=c(time_gap), p=c(p)))
-  }
-}
-
-stats_time_census2 <- stats_time_census %>%
-  mutate(
-    p = case_when(
-      p < 0.001 ~ "<0.001",
-      p >= 0.001 ~ as.character(round(p, digits=3))
-    ),
-    sig = case_when(
-      p < 0.05 ~ "*",
-      TRUE ~ ""
-    )
-  )
-```
-
-```{r}
-stats_treatment_census <- data.frame(date=character(), p=double())
-
-for (d in c("07-19", "08-05", "08-20", "09-17")) {
-  data_sub <- census_by_cage_log %>% filter(date == d)
-  full.model = lmer(log.population ~ treatment + (1|id), data=data_sub, REML=FALSE)
-  noTreatment.model = lmer(log.population ~ (1|id), data=data_sub, REML=FALSE)
-  p = anova(full.model, noTreatment.model)[2,8]
-  stats_treatment_census <- rbind(stats_treatment_census, data.frame(TP=c(tp), p=c(p)))
-}
-
-stats_treatment_census2 <- stats_treatment_census %>%
-  mutate(
-    p = case_when(
-      p < 0.001 ~ "<0.001",
-      p >= 0.001 ~ as.character(round(p, digits=3))
-    ),
-    sig = case_when(
-      p < 0.05 ~ "*",
-      TRUE ~ ""
-    )
-  )
-
-```
-
-
-
-
-
-
-
