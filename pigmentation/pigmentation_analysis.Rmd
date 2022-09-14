@@ -1,0 +1,313 @@
+
+```{r}
+library(tidyverse)
+library(gridExtra) # for arranging multiple plots in 1 image
+```
+
+
+### [1] DATA WRANGLING
+
+Combine data from 2 observers and sample info from master sheet
+```{r}
+raw_pigmentation1 <- read.csv("./data/Caitlynn_PigmentationData.csv")
+raw_pigmentation2 <- read.csv("./data/Andy_PigmentationData.csv")
+pigmentation_master <- read.csv("./data/Samples_Master.csv")
+
+# Combine data and recompute sums
+raw_pigmentation1 <- raw_pigmentation1 %>% rename(Rand_ID = Tube.)
+pigmentation_wTPs28 <- rbind(raw_pigmentation1[1:5], raw_pigmentation2[1:5])
+pigmentation_wTPs28 <- pigmentation_wTPs28 %>% mutate("Sum" = T5 + T6 + T7)
+
+# Merge using Rand_ID
+pigmentation_wTPs28 <- merge(pigmentation_wTPs28, pigmentation_master)
+write.csv(pigmentation_wTPs28, "pigmentation_wTPs28.csv")
+
+# Notes:
+# - raw_pigmentation1 row 1557 malformed
+# - no data for Rand_ID 13
+```
+
+Remove time points 2 and 8 from data
+```{r}
+pigmentation <- pigmentation_wTPs28[!(pigmentation_wTPs28$TP==2 |pigmentation_wTPs28$TP==8),]
+write.csv(pigmentation, "pigmentation.csv")
+```
+
+Create data frame with 1 row per sample
+```{r}
+# pigmentation <- read.csv("pigmentation.csv")
+
+pigmentation_nadrop <- drop_na(pigmentation) # TEMP CODE, Removed NAs to visualize
+pigmentation_by_TP_cage <- pigmentation_nadrop %>% # TEMP CODE, Removed NAs to visualize
+# pigmentation_by_TP_cage <- pigmentation %>% 
+  group_by(TP, Treatment, Cage) %>% 
+  summarise(
+    T5 = mean(T5),
+    T6 = mean(T6),
+    T7 = mean(T7),
+    Sum = mean(Sum)
+  ) %>% 
+  mutate(
+    Cage = paste(Treatment, Cage, sep="-"),
+    TP = as.factor(TP),
+    Treatment = case_when(
+      Treatment == "E" ~ "Control",
+      Treatment == "P" ~ "Experimental"
+    )
+  ) 
+
+write.csv(pigmentation_by_TP_cage, "pigmentation_by_TP_cage_nadrop.csv") # TEMP CODE, Removed NAs to visualize
+# write.csv(pigmentation_by_TP_cage, "pigmentation_by_TP_cage.csv")
+
+summary(pigmentation_by_TP_cage[4:7])
+```
+
+Create file with 1 row per TP / Treatment
+```{r}
+# pigmentation <- read.csv("pigmentation.csv")
+
+pigmentation_nadrop <- drop_na(pigmentation) # TEMP CODE, Removed NAs to visualize
+pigmentation_by_TP_treatment <- pigmentation_nadrop %>% # TEMP CODE, Removed NAs to visualize
+# pigmentation_by_TP_treatment <- pigmentation %>% 
+  group_by(TP, Treatment) %>%
+  summarise(
+    se5 = sd(T5)/sqrt(10),
+    se6 = sd(T6)/sqrt(10),
+    se7 = sd(T7)/sqrt(10),
+    seSum = sd(Sum)/sqrt(10),
+    T5 = mean(T5),
+    T6 = mean(T6),
+    T7 = mean(T7),
+    Sum = mean(Sum),
+    ) %>% 
+    mutate(
+      TP = as.factor(TP),
+      Treatment = case_when(
+        Treatment == "E" ~ "Control",
+        Treatment == "P" ~ "Experimental"
+      )
+    )
+
+write.csv(pigmentation_by_TP_treatment, "pigmentation_by_TP_treatment_nadrop.csv") # TEMP CODE
+# write.csv(pigmentation_by_TP_Treatment, "pigmentation_by_TP_Treatment.csv")
+
+summary(pigmentation_by_TP_cage[4:7])
+```
+
+
+### [2] VISUALIZATION ### 
+
+Read in data (if did not run code above)
+```{r}
+# Use these .csv files if data frames have not been fixed
+# pigmentation_by_TP_treatment <- read.csv("pigmentation_by_TP_cage_nadrop.csv")
+# pigmentation_by_TP_treatment <- read.csv("pigmentation_by_TP_treatment_nadrop.csv")
+
+# pigmentation_by_TP_treatment <- read.csv("pigmentation_by_TP_cage.csv")
+# pigmentation_by_TP_treatment <- read.csv("pigmentation_by_TP_treatment.csv")
+```
+
+Pigmentation visualizations
+```{r}
+p1 <- ggplot(
+  data=pigmentation_by_TP_cage,
+  aes(x=TP, y=T5, group=Treatment, color=Treatment)
+) + 
+geom_line(aes(group=Cage), alpha=0.2) + # Cage pigmentation
+geom_point(aes(color=Treatment), size= 0.2, alpha = 0.2) +  # Cage pigmentation
+geom_line(data=pigmentation_by_TP_treatment, aes(x=TP, y=T5), size=1) +  # Treatment pigmentation
+geom_errorbar(data=pigmentation_by_TP_treatment, aes(y=T5, ymin=T5-se5, ymax=T5+se5), width=.2,
+               position=position_dodge(0.05)) + # Treatment pigmentation
+scale_color_manual(values=c("black","orange")) +
+scale_x_discrete(
+  labels = c("Jul 26",  "Aug 25", "Sep 7", "Dec 22"),
+) +
+ylim(0, 10) +
+labs( y = "T5 Pigmentation Score",  x="") +
+theme_classic() # +
+# theme(
+#   axis.title.x = element_text(size = 0),
+#   axis.title.y = element_text(size = 30),
+#   axis.text.x = element_text(size = 30),
+#   axis.text.y = element_text(size = 30),
+#   )  
+
+p2 <- ggplot(
+  data=pigmentation_by_TP_cage,
+  aes(x=TP, y=T6, group=Treatment, color=Treatment)
+) + 
+geom_line(aes(group=Cage), alpha=0.2) + # Cage pigmentation
+geom_point(aes(color=Treatment), size= 0.2, alpha = 0.2) + # Cage pigmentation
+geom_line(data=pigmentation_by_TP_treatment, aes(x=TP, y=T6), size=1) + # Treatment pigmentation
+geom_errorbar(data=pigmentation_by_TP_treatment, aes(y=T6, ymin=T6-se6, ymax=T6+se6), width=.2,
+               position=position_dodge(0.05)) + # Treatment pigmentation
+scale_color_manual(values=c("black","orange")) +
+scale_x_discrete(
+  labels = c("Jul 26",  "Aug 25", "Sep 7", "Dec 22"),
+) +
+ylim(0, 10) +
+labs( y = "T6 Pigmentation Score",  x="") +
+theme_classic() # +
+# theme(
+#   axis.title.x = element_text(size = 0),
+#   axis.title.y = element_text(size = 30),
+#   axis.text.x = element_text(size = 30),
+#   axis.text.y = element_text(size = 30),
+#   )  
+
+p3 <- ggplot(
+  data=pigmentation_by_TP_cage,
+  aes(x=TP, y=T7, group=Treatment, color=Treatment)
+) + 
+geom_line(aes(group=Cage), alpha=0.2) + # Cage pigmentation
+geom_point(aes(color=Treatment), size= 0.2, alpha = 0.2) + # Cage pigmentation
+geom_line(data=pigmentation_by_TP_treatment, aes(x=TP, y=T7), size=1) + # Treatment pigmentation
+geom_errorbar(data=pigmentation_by_TP_treatment, aes(y=T7, ymin=T7-se7, ymax=T7+se7), width=.2,
+               position=position_dodge(0.05)) + # Treatment pigmentation
+scale_color_manual(values=c("black","orange")) +
+scale_x_discrete(
+  labels = c("Jul 26",  "Aug 25", "Sep 7", "Dec 22"),
+) +
+ylim(0, 10) +
+labs( y = "T7 Pigmentation Score",  x="") +
+theme_classic() # +
+# theme(
+#   axis.title.x = element_text(size = 0),
+#   axis.title.y = element_text(size = 30),
+#   axis.text.x = element_text(size = 30),
+#   axis.text.y = element_text(size = 30),
+#   )  
+
+p4 <- ggplot(
+  data=pigmentation_by_TP_cage,
+  aes(x=TP, y=Sum, group=Treatment, color=Treatment)
+) + 
+geom_line(aes(group=Cage), alpha=0.2) + # Cage pigmentation
+geom_point(aes(color=Treatment), size= 0.2, alpha = 0.2) + # Cage pigmentation
+geom_line(data=pigmentation_by_TP_treatment, aes(x=TP, y=Sum), size=1) +
+geom_point(data=pigmentation_by_TP_treatment, aes(x=TP, y=Sum)) + # Treatment pigmentation
+geom_errorbar(data=pigmentation_by_TP_treatment, aes(y=Sum, ymin=Sum-seSum, ymax=Sum+seSum), width=.2,     
+              position=position_dodge(0.05)) + # Treatment pigmentation
+scale_color_manual(values=c("black","orange")) +
+scale_x_discrete(
+  labels = c("Jul 26",  "Aug 25", "Sep 7", "Dec 22"),
+) +
+labs(y = "Sum Pigmentation Score",  x="") +
+theme_classic() # +
+# theme(
+#   axis.title.x = element_text(size = 0),
+#   axis.title.y = element_text(size = 28),
+#   axis.text.x = element_text(size = 30),
+#   axis.text.y = element_text(size = 30),
+#   legend.title = element_text(size = 30),
+#   legend.text = element_text(size = 25)
+#   )  
+
+grid.arrange(p1, p2, p3, p4)
+ggsave("pigmentation_plots.png") # Only saves sum plot
+```
+
+
+### [3] STATISTICS ###
+
+Read in data (if did not run code above)
+```{r}
+# pigmentation <- read.csv("pigmentation.csv")
+# pigmentation_nadrop <- drop_na(pigmentation)
+```
+
+Normality test
+```{r}
+shapiro.test(pigmentation_nadrop$Sum)
+
+boxplot(pigmentation_nadrop$Sum)
+boxplot(pigmentation_nadrop$Sum)
+```
+
+Create new data frame from pigmentation_nadrop with log(Sum) because data is NOT normal
+```{r}
+pigmentation_nadrop_log <- pigmentation_nadrop %>% mutate(log.Sum = log(Sum))
+```
+
+Analyzing time using linear mixed effect model (for each time frame)
+```{r}
+stats_time_pigmentation <- data.frame(treatment=character(), time_frame=integer(), p=double())
+
+for (group in unique(pigmentation_nadrop_log$Treatment)) {
+  time_gap = 1
+  for (dates in list(c(3, 7), c(7, 9), c(9, 13))) {
+    data_sub <- pigmentation_nadrop_log %>% filter(TP %in% dates & Treatment == group)
+    
+    full.model = lmer(log.Sum ~ TP + (1|Experimenter) + (1|Sample), data=data_sub, REML=FALSE)
+    noTP.model = lmer(log.Sum ~ (1|Experimenter) + (1|Sample), data=data_sub, REML=FALSE)
+    p = anova(full.model, noTP.model)[2,8]
+    
+    stats_time_pigmentation  <- rbind(stats_time_pigmentation, data.frame(treatment=c(group), time_frame=c(time_gap), p=c(p)))
+    time_gap = time_gap + 1
+  }
+}
+
+# Make easier to interpret
+stats_time_pigmentation_simple <- stats_time_pigmentation  %>%
+  mutate(
+    time_frame = case_when(
+      # time_frame == 1 ~ "Jul 26 - Aug 25",
+      # time_frame == 2 ~ "Aug 25 - Sep 7",
+      # time_frame == 3 ~ "Sep 7 - Dec 22"
+      time_frame == 1 ~ "07-26 to 08-25",
+      time_frame == 2 ~ "08-25 to 09-07",
+      time_frame == 3 ~ "09-07 to 12-22"
+    ),
+    p = case_when(
+      p < 0.001 ~ "<0.001",
+      p >= 0.001 ~ as.character(round(p, digits=3))
+    ),
+    sig = case_when(
+      p < 0.05 ~ "*",
+      p >= 0.001 ~ ""
+    )
+  )
+
+write.csv(stats_time_pigmentation_simple, "stats_time_pigmentation.csv")
+stats_time_pigmentation_simple
+```
+
+Analyzing treatment using linear mixed effect model (at each date)
+```{r}
+stats_treatment_pigmentation <- data.frame(TP=integer(), p=double())
+
+for (tp in c(3, 7, 9, 13)) {
+  data_sub <- pigmentation_nadrop_log %>% filter(TP == tp)
+  full.model = lmer(log.Sum ~ Treatment + (1|Experimenter) + (1|Sample), data=data_sub, REML=FALSE)
+  noTreatment.model = lmer(log.Sum ~ (1|Experimenter) + (1|Sample), data=data_sub, REML=FALSE)
+  p = anova(full.model, noTreatment.model)[2,8]
+  stats_treatment_pigmentation <- rbind(stats_treatment_pigmentation, data.frame(TP=c(tp), p=c(p)))
+}
+
+# Make easier to interpret
+stats_treatment_pigmentation_simple <- stats_treatment_pigmentation %>%
+  mutate(
+    date = case_when(
+      TP == 3 ~ "07-26",
+      TP == 7 ~ "08-25",
+      TP == 9 ~ "09-07",
+      TP == 13 ~ "12-22"
+      # TP == 3 ~ "Jul 26",
+      # TP == 7 ~ "Aug 25",
+      # TP == 9 ~ "Sep 7",
+      # TP == 13 ~ "Dec 22"
+    ),
+    p = case_when(
+      p < 0.001 ~ "<0.001",
+      p >= 0.001 ~ as.character(round(p, digits=3))
+    ),
+    sig = case_when(
+      p < 0.05 ~ "*",
+      p >= 0.001 ~ ""
+    )
+  ) %>% 
+  select(date, p, sig)
+
+write.csv(model_treatment_pigmentation_simple, "stats_treatment_pigmentation.csv")
+model_comparisons_treatment_simple 
+```
