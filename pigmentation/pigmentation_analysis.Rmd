@@ -204,7 +204,7 @@ theme_classic() # +
 #   )  
 
 grid.arrange(p1, p2, p3, p4)
-ggsave("pigmentation_plots.png") # Only saves sum plot
+ggsave("pigmentation_plot.png") # Only saves sum plot
 ```
 
 
