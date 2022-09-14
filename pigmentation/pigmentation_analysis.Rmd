@@ -308,6 +308,6 @@ stats_treatment_pigmentation_simple <- stats_treatment_pigmentation %>%
   ) %>% 
   select(date, p, sig)
 
-write.csv(model_treatment_pigmentation_simple, "stats_treatment_pigmentation.csv")
-model_comparisons_treatment_simple 
+write.csv(stats_treatment_pigmentation_simple, "stats_treatment_pigmentation.csv")
+stats_treatment_pigmentation_simple 
 ```
